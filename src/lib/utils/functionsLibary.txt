@@ -1,0 +1,835 @@
+//import './styles/index.css';
+
+// screenshot
+//import './assets/pugify-screenshot-02.webp';
+
+// Store setup
+export interface Const {
+	readonly inputEl: HTMLTextAreaElement | null;
+	readonly outputEl: HTMLTextAreaElement | null;
+}
+export interface Variables {
+	currentElement: any;
+	currentNode?: Node | null;
+	guardRail: number;
+	hierarchy: number;
+	inputString: string;
+	inputHTML: HTMLDivElement | null;
+	logCount?: number;
+	outputPug: string;
+	status: string;
+	version: string;
+}
+export interface Store {
+	const: Const;
+	data: any;
+	var: Variables;
+	func: any;
+	mode?: string;
+}
+const s: Store = {
+	const: {
+		inputEl: document.querySelector('#input'),
+		outputEl: document.querySelector('#output')
+	},
+	data: {
+		doctypeShortcuts: {
+			html: {
+				shortcut: 'doctype html',
+				tag: '<!DOCTYPE html>'
+			},
+			xml: {
+				shortcut: 'doctype xml',
+				tag: '<?xml version="1.0" encoding="utf-8" ?>'
+			},
+			transitional: {
+				shortcut: 'doctype transitional',
+				tag: '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'
+			},
+			strict: {
+				shortcut: 'doctype strict',
+				tag: '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">'
+			},
+			frameset: {
+				shortcut: 'doctype frameset',
+				tag: '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Frameset//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-frameset.dtd">'
+			},
+			oneOne: {
+				shortcut: 'doctype 1.1',
+				tag: '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">'
+			},
+			basic: {
+				shortcut: 'doctype basic',
+				tag: '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML Basic 1.1//EN" "http://www.w3.org/TR/xhtml-basic/xhtml-basic11.dtd">'
+			},
+			mobile: {
+				shortcut: 'doctype mobile',
+				tag: '<!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtml-mobile12.dtd">'
+			},
+			plist: {
+				shortcut: 'doctype plist',
+				tag: '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+			}
+		}
+	},
+	func: {
+		helpers: {}
+	},
+	mode: 'test',
+	var: {
+		currentElement: null,
+		currentNode: null,
+		guardRail: 4800,
+		hierarchy: 0,
+		inputString: '',
+		inputHTML: null,
+		logCount: 0,
+		outputPug: '',
+		status: '',
+		version: '0.28'
+	}
+};
+Object.freeze(s.const);
+
+// Functions
+s.func = {
+	accordionClick(e: MouseEvent) {
+		console.log('clicked');
+		// function for opening and closing accordions
+		const details = e.target instanceof HTMLElement ? e.target : null;
+		const accordions = document.querySelectorAll('.accordion');
+		details && details.hasAttribute('open')
+			? details.removeAttribute('open')
+			: details.setAttribute('open', '');
+		accordions.forEach((accordion) => {
+			if (accordion != details && accordion.hasAttribute('open')) {
+				accordion.removeAttribute('open');
+			}
+		});
+	},
+	clearHTML() {
+		c.inputEl.value = '';
+		c.outputEl.value = '';
+	},
+	convertHTMLToPug() {
+		// clear output field
+		v.outputPug = ``;
+
+		// start processing
+		v.currentNode = v.inputHTML;
+		v.hierarchy = -1;
+		f.processDownOver();
+
+		// now loop
+		f.processAllNodes();
+
+		// if pug string evaluates to null = clear output field
+		if (v.inputHTML.firstChild == null) {
+			v.outputPug = '';
+		}
+	},
+	convertNodeToPug(node: Node) {
+		let output = '';
+
+		// if it's a text node
+		if (h.isText(node)) {
+			output += f.pugifyTextNode(node);
+			return output;
+		}
+
+		// if nodeType is a comment
+		else if (h.isComment(node)) {
+			output += f.pugifyCommentNode(node);
+			return output;
+		}
+
+		// if node is an HTMLElement not text node
+		else if (h.isElement(node)) {
+			return f.pugifyElement(node);
+		} else {
+			return '';
+		}
+	},
+	async copyPugToClipboard() {
+		const copyButton: HTMLElement = document.querySelector('#copy-button');
+		const copyConf: HTMLElement = document.querySelector('#copy-conf');
+		const output: HTMLTextAreaElement = document.querySelector('#output');
+		const pug: string = output.value;
+
+		// copy
+		const copy = await navigator.clipboard.writeText(pug);
+		copyConf.classList.add('!opacity-100');
+
+		// hide button on leave copy button
+		const hideConf = () => {
+			copyConf.classList.remove('!opacity-100');
+			copyButton.removeEventListener('mouseout', hideConf);
+		};
+
+		copyButton.addEventListener('mouseout', hideConf);
+	},
+	decodeComment(node: Node, indent: string) {
+		// .nodeValue of a comment will come back without the <-- or -->
+		let decoded = '';
+
+		// parse encoded element -- used for doctypes
+		if (node.nodeValue.includes('pug::')) {
+			decoded = node.nodeValue.slice(5, -5);
+
+			// clean up quotes
+			decoded = decoded.replace(/'/g, '"');
+
+			// add line breaks as appropriate
+			if (decoded.includes(` `) && decoded.length > 90) {
+				// first line break at parenthesis start
+				decoded = decoded.replace(/\(/, `(${indent}  `);
+
+				// line break after every space
+				decoded = decoded.replace(/" /g, `"${indent}  `);
+
+				// line break before parenthesis end
+				decoded = decoded.replace(/\)/, `${indent})`);
+			}
+		} else decoded = null;
+		return decoded;
+	},
+	decodeSpecialTag(el: HTMLDivElement) {
+		const tag = el.dataset.pug;
+		el.removeAttribute('data-pug');
+		return tag;
+	},
+	encodePugInComment(pug: string) {
+		let string = pug.trim();
+		string = string.replace(/(?:\r\n|\r|\n)/g, '');
+		const i = 0;
+		while (string.includes(`  `) && i < v.guardRail) {
+			string = string.replace(`  `, ` `);
+		}
+		// takes pug and encodes it in a string representation of an html comment
+		return `<!--pug::${string}::pug-->`;
+	},
+	findAndEncodeDoctypes(string: string) {
+		let output: string = string;
+		let i = 0;
+
+		// test html doctypes
+		const query1 = /(<!doctype.*?>)/i;
+		const match1 = (string: string) => string.match(query1);
+
+		// test xml doctypes
+		const query2 = /(<\?xml.*\?>)/i;
+		const match2 = (string: string) => string.match(query2);
+
+		// find and process doctype strings
+		while ((match1(output) || match2(output)) && i < 20) {
+			const match = match1(output) ? match1(output)[0] : match2(output)[0];
+			const pug = f.pugifyDoctypeString(match);
+			const encoded = f.encodePugInComment(pug);
+			output = match != null ? output.replace(match, encoded) : string;
+			i++;
+		}
+		return output;
+	},
+	findAndEncodeMediaCalls(string: string) {
+		let output: string = string;
+		const patterns = ['src=', 'href=', 'srcset=', 'data=', 'style='];
+		patterns.forEach((pattern) => {
+			const query = RegExp(String.raw`${pattern}`, 'ig');
+			output = output.replace(query, `x${pattern}`);
+		});
+		return output;
+	},
+	findAndEncodeSpecialHTMLtags(string: string) {
+		// this function is for encoding tags that we can't put in our HTML container e.g. 'html'
+		// we'll turn them into divs before we activate the html, then back again at output
+		// added 'header' to the list to avoid conflicts with 'head'
+		let output: string = string;
+
+		const tags = ['html', 'header', 'head', 'body'];
+
+		tags.forEach((tag) => {
+			let i = 0;
+			const query = RegExp(String.raw`(<${tag}.*?>)`, 'i');
+			const match = (string: string) => string.match(query);
+
+			while (match(output) && i < v.guardRail) {
+				const startTag = match(output)[0];
+				const encodedStartTag = `<div data-pug="${tag}"` + startTag.slice(tag.length + 1);
+				const endTag = `</${tag}>`;
+				output = output.replace(startTag, encodedStartTag).replace(endTag, '</div>');
+				i++;
+			}
+		});
+
+		return output;
+	},
+	getCaretPosition(textarea: HTMLTextAreaElement) {
+		if (textarea.selectionStart || textarea.selectionStart == 0) {
+			return {
+				start: textarea.selectionStart,
+				end: textarea.selectionEnd
+			};
+		} else {
+			return {
+				start: 0,
+				end: 0
+			};
+		}
+	},
+	helpers: {
+		// this function for testing only -- delete it later
+		uppercase(string: string) {
+			return string.toUpperCase();
+		},
+		hasSpecialChars(string: string) {
+			const query = /^[a-zA-Z0-9 -]*$/;
+			return !query.test(string);
+		},
+		getNodeType(node: Node) {
+			const num: number = node.nodeType;
+			switch (num) {
+				case 1:
+					return 'element';
+				case 3:
+					return 'text';
+				//- case 4: return 'cdata';
+				//- case 7: return 'processing_instruction'
+				case 8:
+					return 'comment';
+				//case 9: return 'document';
+				//case 10: return 'document_type';
+				//case 11: return 'document_fragment';
+				default:
+					return 'unknown';
+			}
+		},
+		hasLineBreak(string: string) {
+			return /\r\n|\r|\n/.test(string);
+		},
+		isComment(node: Node) {
+			return h.getNodeType(node) === 'comment';
+		},
+		isElement(node: Node) {
+			return h.getNodeType(node) === 'element';
+		},
+		isFirstChild(node: Node) {
+			return node.parentNode.firstChild === node;
+		},
+		isRoot(node: Node) {
+			return node.parentElement.id == 'input-html';
+		},
+		isScript(node: Node) {
+			return node instanceof HTMLScriptElement;
+		},
+		isStyle(node: Node) {
+			return node instanceof HTMLStyleElement;
+		},
+		isText(node: Node) {
+			return h.getNodeType(node) === 'text';
+		},
+		replaceMultipleSpaces(string: string) {
+			const pattern = ` {2,}`;
+			const query = RegExp(String.raw`${pattern}`, 'g');
+			const replaced = string.replace(query, `  `);
+			return replaced;
+		},
+		replaceTabs(string: string) {
+			const query = /\t+/g;
+			const replaced = string.replace(query, `  `);
+			return replaced;
+		},
+		stringBeforeBreak(string: string) {
+			return string.split(/\r\n|\r|\n/)[0];
+		},
+		stringAfterBreak(fullString: string, beforeString: string) {
+			return fullString.slice(beforeString.length + 1);
+		},
+		stripExtraLineBreaks(string: string) {
+			const query = /[\n\r]+[\s]*[\n\r]+/g;
+			const scrubbed = string.replace(query, `\n`);
+			return scrubbed;
+		}
+	},
+	insertChildIndent() {
+		let sps = '';
+		for (let i = 0; i < v.hierarchy * 2; i++) sps += ` `;
+		return v.hierarchy == 0 ? '' : `\n${sps}`;
+	},
+	moveUpOneNode() {
+		const inputEl = document.querySelector('#input-html');
+		if (v.currentNode.parentNode && v.currentNode.parentNode != inputEl) {
+			v.currentNode = v.currentNode.parentNode;
+			v.hierarchy--;
+		}
+	},
+	onKeyDown(e: KeyboardEvent) {
+		const key = e.key;
+		if (key.toLowerCase() == 'tab') {
+			const target = e.target instanceof HTMLTextAreaElement ? e.target : null;
+			if (target == document.querySelector('#input')) {
+				e.preventDefault();
+				const position = s.func.getCaretPosition(target);
+				const start = position.start;
+				const before = target.value.substring(0, start);
+				const after = target.value.substring(start);
+				target.value = before + `  ` + after;
+				f.setCaretPosition(target, start + 2, start + 2);
+			}
+		}
+	},
+	convertInputStringToHTML(string: string) {
+		// create a container to hold stuff
+		v.inputHTML = document.createElement('div');
+		v.inputHTML.id = 'input-html';
+		v.inputHTML.insertAdjacentHTML('afterbegin', string);
+	},
+	processAllNodes() {
+		let i = 0;
+		while (v.currentNode.nextSibling == null && v.hierarchy > 0 && i < v.guardRail) {
+			i++;
+			f.moveUpOneNode();
+			if (v.currentNode.nextSibling) {
+				f.processSibling();
+				f.processDownOver();
+			}
+		}
+	},
+	processDownFirstChildren() {
+		let i = 0;
+		while (v.currentNode.firstChild && i < v.guardRail) {
+			f.processFirstChild();
+			i++;
+		}
+	},
+	processDownOver() {
+		let i = 0;
+		while ((v.currentNode.firstChild || v.currentNode.nextSibling) && i < v.guardRail) {
+			i++;
+			f.processDownFirstChildren();
+			f.processSibling();
+		}
+	},
+	processFirstChild() {
+		if (v.currentNode.firstChild) {
+			v.currentNode = v.currentNode.firstChild;
+			v.hierarchy++;
+			v.outputPug += f.processNode(v.currentNode, v.hierarchy);
+		}
+	},
+	processNode(node: Node, hierarchy: number) {
+		const output = f.convertNodeToPug(node);
+		return output ? output : '';
+	},
+	processSibling() {
+		if (v.currentNode.nextSibling) {
+			v.currentNode = v.currentNode.nextSibling;
+			v.outputPug += f.processNode(v.currentNode, v.hierarchy);
+		}
+	},
+	pugifyAttributes(el: HTMLElement) {
+		// get indent
+		let indent = '';
+		let i = 0;
+		while (i < v.hierarchy) {
+			indent += `  `;
+			i++;
+		}
+
+		let string = ``;
+
+		if (el.hasAttributes()) {
+			// get attributes
+			const attrs: NamedNodeMap = el.attributes;
+
+			// array to store attributes
+			const array: string[] = [];
+
+			// iterate through element attributes and add to array
+			for (let i: number = attrs.length - 1; i >= 0; i--) {
+				// replace double-quotes with single quotes within attribute
+				let scrubbed = attrs[i].value.replace(/"/g, "'");
+
+				// remove line-breaks within attribute
+				scrubbed = scrubbed.replace(/\r?\n|\r/g, ' ');
+
+				// remove extra spaces
+				scrubbed = scrubbed.replace(/\s{2,}/g, ' ');
+
+				// build attribute -- account for boolean attributes
+				const attribute = scrubbed ? `${attrs[i].name}="${scrubbed}"` : `${attrs[i].name}=""`;
+
+				if (attrs[i].name != 'class' && attrs[i].name != 'id') array.push(attribute);
+				// classes
+				// just pull in classes where emmet syntax would be invalid (e.g. containing '/' or ':' or '[]')
+				else if (attrs[i].name == 'class') {
+					const classes = scrubbed;
+					const classList = classes.split(' ');
+					let specialClassesString = '';
+					classList.forEach((cl) => {
+						if (this.helpers.hasSpecialChars(cl)) {
+							specialClassesString += `${cl} `;
+						}
+					});
+					const attribute = `class="${specialClassesString.trim()}"`;
+					if (specialClassesString) {
+						array.push(attribute);
+					}
+				}
+
+				// id attribute
+				else if (attrs[i].name == 'id') {
+					const id = scrubbed;
+					if (this.helpers.hasSpecialChars(id) || id.includes(' ')) {
+						const attribute = `id="${id.trim()}"`;
+						array.push(attribute);
+					}
+				}
+			}
+
+			// add attributes from array
+			if (array.length > 0) {
+				// open parenthesis
+				string += `(`;
+
+				// adding attributes to string
+				let count = 0;
+				array.forEach((item) => {
+					if (array.length > 1 || array[0].length > 90) {
+						string += array.length - 1 == count ? `\n${indent}  ${item}` : `\n${indent}  ${item} `;
+					} else string += array.length - 1 == count ? `${item}` : `${item} `;
+					count++;
+				});
+
+				// add closing parenthesis
+				if (array.length > 1 || array[0].length > 90) {
+					string += `\n${indent}  )`;
+				} else {
+					string += ')';
+				}
+			}
+		}
+		return string;
+	},
+	pugifyClassList(el: HTMLElement) {
+		let string = '';
+		el.classList.forEach((cl) => {
+			if (!this.helpers.hasSpecialChars(cl)) {
+				string += `.${cl}`;
+			}
+		});
+		return string;
+	},
+	pugifyCommentNode(node: Node) {
+		const indent: string = f.insertChildIndent();
+		const isRoot: boolean = h.isRoot(node);
+		const isFirstChild: boolean = node.previousSibling == null; // first child w/ content
+		const decoded: string | null = f.decodeComment(node, indent);
+		const isEncoded: boolean = decoded != null;
+		const value: string = decoded == null ? node.nodeValue.trim() : decoded;
+		let output = '';
+
+		// if comment text includes a line break && is not encoded
+		if (h.hasLineBreak(value) && !isEncoded) {
+			let segment: string = value;
+			var i = 0;
+			while (segment.includes(`  `) && i < v.guardRail) {
+				segment = segment.replace(`  `, ` `);
+				i++;
+			}
+
+			//prefix
+			output += isRoot && isFirstChild ? `//` : '';
+			output += isRoot && !isFirstChild ? `\n//` : '';
+			output += !isRoot ? `${indent}//` : '';
+
+			// iterate sections between line breaks
+			var i = 0;
+			while (h.hasLineBreak(segment) && i < v.guardRail) {
+				const before = h.stringBeforeBreak(segment);
+				output += isRoot && isFirstChild ? `\n  ${before.trim()}` : '';
+				output += isRoot && !isFirstChild ? `\n  ${before}` : '';
+				output += !isRoot ? `${indent}  ${before}` : '';
+				segment = h.stringAfterBreak(segment, before);
+				i++;
+			}
+
+			// last line
+			output += segment && isRoot ? `\n  ${segment.trim()}` : '';
+			output += segment && !isRoot ? `${indent}  ${segment}` : '';
+		} else {
+			// else if no line break
+			output += isRoot && isFirstChild && !isEncoded ? `// ${value}` : '';
+			output += isRoot && isFirstChild && isEncoded ? `${value}` : '';
+			output += isRoot && !isFirstChild && !isEncoded ? `\n// ${value}` : '';
+			output += isRoot && !isFirstChild && isEncoded ? `\n${value}` : '';
+			output += !isRoot && isFirstChild && !isEncoded ? `${indent}// ${value}` : ``;
+			output += !isRoot && isFirstChild && isEncoded ? `${indent}${value}` : ``;
+			output += !isRoot && !isFirstChild && !isEncoded ? `${indent}// ${value}` : ``;
+			output += !isRoot && !isFirstChild && isEncoded ? `${indent}${value}` : ``;
+		}
+
+		return output;
+	},
+	pugifyDoctypeString(string: string) {
+		const dts = d.doctypeShortcuts;
+		const lc = string.toLowerCase();
+		const isXML = lc.includes('<?xml');
+
+		// if xml
+		if (isXML && lc.includes(dts.xml.tag)) return dts.xml.shortcut;
+		else if (isXML && !lc.includes(dts.xml.tag))
+			return `doctype xml ${string.split('<?xml ')[1].slice(0, -2).trim()}`;
+		// if non-xml type
+		else {
+			// create custom doctype
+			const len = '<!doctype'.length;
+			const excerpt = string.slice(len, -1);
+			let pug = `doctype html ${excerpt}`;
+
+			// if tag matches a shortcut then use shortcut instead
+			Object.keys(s.data.doctypeShortcuts).forEach((item) => {
+				const tag = dts[item].tag;
+				const sc = dts[item].shortcut;
+				if (lc.includes(tag.toLowerCase())) {
+					pug = sc;
+					return;
+				}
+			});
+			return pug;
+		}
+	},
+	pugifyElement(el: any) {
+		const indent: string = f.insertChildIndent();
+		const isRoot: boolean = h.isRoot(el);
+		const isFirst: boolean = el.previousSibling == null;
+		const isEncoded: boolean = el.dataset.pug != null;
+		let output = '';
+		const tagName = !isEncoded ? f.pugifyTagName(el) : f.decodeSpecialTag(el);
+		const elPug = tagName + f.pugifyId(el) + f.pugifyClassList(el) + f.pugifyAttributes(el);
+		output += isRoot && isFirst ? '' : '';
+		output += isRoot && !isFirst ? `\n` : '';
+		output += !isRoot ? indent : '';
+		output += elPug;
+		return output;
+	},
+	pugifyFirstNodeChild() {
+		v.hierarchy += 1;
+		v.outputPug += f.insertChildIndent();
+		v.currentNode = v.currentNode.firstChild;
+		v.outputPug += f.convertNodeToPug(v.currentNode);
+	},
+	pugifyId(el: HTMLElement) {
+		const id = el.id;
+		return el.id &&
+			el.id.trim().length > 0 &&
+			!this.helpers.hasSpecialChars(id) &&
+			!id.includes(' ')
+			? `#${el.id.trim()}`
+			: '';
+	},
+	pugifyScriptOrStyleContent(string: string, indent: string) {
+		const pattern = `\n`;
+		const query = RegExp(String.raw`${pattern}`, 'ig');
+		let output = string.replace(query, `${indent}`);
+		output = '.' + indent + output;
+		return output;
+	},
+	pugifyTagName(el: HTMLElement) {
+		const id = el.id;
+		const isDiv: boolean = el instanceof HTMLDivElement;
+		const isCustomEl: boolean = el instanceof HTMLUnknownElement;
+
+		// is there a class that will work as a class literal
+		let hasClass = false;
+		el.classList.forEach((cls) => {
+			hasClass = !this.helpers.hasSpecialChars(cls) ? true : hasClass;
+		});
+
+		// is there an id that will work as an id literal
+		const hasId: boolean =
+			el.id && el.id.length > 0 && !this.helpers.hasSpecialChars(id) && !id.includes(' ');
+		let output = (isDiv && hasClass) || (isDiv && hasId) ? '' : el.tagName.toLowerCase();
+
+		// if element is not a custom element => lower case
+		if (isCustomEl && el.dataset.tag) {
+			const casedTag: string = el.dataset.tag;
+			el.removeAttribute('data-tag');
+			output = casedTag;
+		}
+
+		return output;
+	},
+	pugifyNormalTextContent(node: Node, string: string, indent: string) {
+		//- EDITED THIS!
+		const lineBreaks = (string: string) => {
+			const pattern = '\r\n|\r|\n';
+			const query = RegExp(String.raw`${pattern}`, 'ig');
+			const isRoot = h.isRoot(node);
+			const isFirst = h.isFirstChild(node);
+			let output = '';
+			switch (true) {
+				case isRoot && isFirst:
+					output = `${indent}| ` + string.replace(query, `\n| `);
+					break;
+				case isRoot && !isFirst:
+					output = `\n${indent}| ` + string.replace(query, `\n| `);
+					break;
+				default:
+					output = `${indent}| ` + string.replace(query, `${indent}| `);
+			}
+			return output;
+		};
+		const noLineBreaks = (string: string) => {
+			const isFirst: boolean = node.previousSibling == null;
+			const isLast: boolean = node.nextSibling == null;
+			const isLong = string.length > 90;
+			let output = '';
+			if (h.isRoot(node) && string) {
+				output = isFirst ? `| ${string}` : `\n| ${string}`;
+			} else if (string) {
+				output = isFirst && isLast && !isLong && string ? ` ${string}` : `${indent}| ${string}`;
+			}
+			return output;
+		};
+		return h.hasLineBreak(string) ? lineBreaks(string) : noLineBreaks(string);
+	},
+	pugifyTextNode(node: Node) {
+		// variables
+		const indent: string = f.insertChildIndent();
+		const pn: Node = node.parentNode;
+
+		// pre-processing
+		let text: string = node.nodeValue.trim();
+		text = h.replaceTabs(text);
+		text = h.replaceMultipleSpaces(text);
+		text = h.stripExtraLineBreaks(text);
+
+		// format content
+		return h.isScript(pn) || h.isStyle(pn)
+			? this.pugifyScriptOrStyleContent(text, indent)
+			: this.pugifyNormalTextContent(node, text, indent);
+	},
+	readyAccordions() {
+		const accordions = document.querySelectorAll('.accordion');
+		accordions.forEach((accordion) => {
+			accordion.addEventListener('click', f.accordionClick);
+		});
+	},
+	readyCopyButton() {
+		const copyButton: HTMLElement = document.querySelector('#copy-button');
+		if (navigator.clipboard) {
+			copyButton.addEventListener('click', this.copyPugToClipboard);
+		} else {
+			copyButton.style.display = 'none';
+		}
+	},
+	readyKeyDown() {
+		document.addEventListener('keydown', this.onKeyDown);
+	},
+	readyDeleteButton() {
+		const deleteButton: HTMLElement = document.querySelector('#delete-button');
+		deleteButton.addEventListener('click', this.clearHTML);
+	},
+	restoreMediaCalls() {
+		const patterns = ['src=', 'href=', 'srcset=', 'data=', 'style='];
+		patterns.forEach((pattern) => {
+			const query = RegExp(String.raw`x${pattern}`, 'ig');
+			s.var.outputPug = s.var.outputPug.replace(query, pattern);
+		});
+	},
+	async runConverter() {
+		// worker & function for parsing / pre-processing input string
+		const workerParser = new Worker(new URL('./workerParser.ts', import.meta.url));
+		const runParser = () => {
+			return new Promise((resolve) => {
+				workerParser.postMessage([v.inputString, v.guardRail]);
+				workerParser.onmessage = function (e) {
+					const string = e.data;
+					f.convertInputStringToHTML(string);
+					resolve('parsed input string');
+				};
+			});
+		};
+
+		// clear output
+		c.outputEl.value = '';
+
+		if (v.inputString) {
+			if (v.inputString.length > 5000) {
+				c.outputEl.value = "Hold onto your butts... that's a lot to parse.";
+			}
+			//??? Use promise chain instead???
+			// pre-process input string
+			const result1 = await runParser();
+
+			// convert html to pug
+			const result2 = await f.convertHTMLToPug();
+
+			// restore media calls
+			const result3 = await f.restoreMediaCalls();
+
+			// display results
+			c.outputEl.value = v.outputPug;
+
+			// return
+			return new Promise((resolve) => {
+				resolve('conversion completed');
+			});
+		} else {
+			return 'empty string';
+		}
+	},
+	setCaretPosition(textarea: HTMLTextAreaElement, start: number, end: number) {
+		if (textarea.setSelectionRange) {
+			textarea.focus();
+			textarea.setSelectionRange(start, end);
+		}
+	},
+	async onPaste(e: ClipboardEvent) {
+		const getPastedData = () => {
+			return new Promise((resolve) => {
+				v.inputString = c.inputEl.value;
+				resolve('got data from clipboard');
+			});
+		};
+		const showInput = () => {
+			return new Promise((resolve) => {
+				v.inputString = c.inputEl.value;
+				resolve('add pasted data to input field');
+			});
+		};
+
+		const result1 = await getPastedData();
+		//const result3 = await f.runConverter();
+	},
+	async onInput() {
+		const getData = () => {
+			return new Promise((resolve) => {
+				v.inputString = c.inputEl.value;
+				resolve(v.inputString);
+			});
+		};
+		const result1 = await getData();
+		const result2 = await f.runConverter();
+	},
+	updateVersion() {
+		const versionDiv = document.querySelector('#version');
+		versionDiv.textContent = 'v ' + v.version;
+	}
+};
+
+// shortcuts
+const c = s.const;
+const d = s.data;
+const f = s.func;
+const v = s.var;
+const h = f.helpers;
+
+// run
+c.inputEl.addEventListener('paste', f.onPaste);
+c.inputEl.addEventListener('input', f.onInput);
+f.readyCopyButton();
+f.readyDeleteButton();
+f.readyKeyDown();
+f.readyAccordions();
+f.updateVersion();

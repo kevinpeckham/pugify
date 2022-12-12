@@ -2,7 +2,7 @@
 	"bracketSpacing": true,
 	"useTabs": true,
 	"singleQuote": true,
-	"trailingComma": "none",
+	"trailingComma": "es5",
 	"overrides": [{ "files": "*.svelte", "options": { "parser": "svelte" } }],
 	"printWidth": 100,
 	"semi": true,

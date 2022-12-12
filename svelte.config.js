@@ -1,4 +1,5 @@
-import adapter from '@sveltejs/adapter-auto';
+//import adapter from '@sveltejs/adapter-auto';
+import vercel from '@sveltejs/adapter-vercel';
 import preprocess from 'svelte-preprocess';
 import path from 'path';
 
@@ -13,14 +14,13 @@ const config = {
 	],
 
 	kit: {
-		adapter: adapter(),
+		adapter: vercel(),
 		alias: {
 			$atoms: path.resolve('./src/lib/components/atoms'),
 			$components: path.resolve('./src/lib/components'),
 			$functions: path.resolve('./src/lib/functions'),
-			$lib: path.resolve('./src/lib'),
 			$molecules: path.resolve('./src/lib/components/molecules'),
-			$organism: path.resolve('./src/lib/components/organisms'),
+			$organisms: path.resolve('./src/lib/components/organisms'),
 			$settings: path.resolve('./src/lib/settings'),
 			$stores: path.resolve('./src/lib/stores'),
 			$types: path.resolve('./src/lib/types'),
